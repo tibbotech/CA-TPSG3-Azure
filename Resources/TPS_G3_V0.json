@@ -1,0 +1,119 @@
+[
+  {
+    "@id": "dtmi:tibbofactory:TPS_G3_ju;1",
+    "@type": "Interface",
+    "contents": [
+      {
+        "@id": "dtmi:tibbofactory:TPS_G3_ju:Onboardtemp;1",
+        "@type": [
+          "Telemetry",
+          "NumberValue",
+          "Temperature"
+        ],
+        "displayName": {
+          "en": "Onboard Temperature"
+        },
+        "name": "Onboardtemp",
+        "schema": "double",
+        "unit": "degreeCelsius",
+        "maxValue": 125,
+        "minValue": -40
+      },
+      {
+        "@id": "dtmi:tibbofactory:TPS_G3_ju:Ax;1",
+        "@type": [
+          "Telemetry",
+          "NumberValue",
+          "Acceleration"
+        ],
+        "description": {
+          "en": "in milli g"
+        },
+        "displayName": {
+          "en": "Acceleration X"
+        },
+        "name": "Ax",
+        "schema": "integer",
+        "unit": "gForce",
+        "displayUnit": {
+          "en": "mg"
+        },
+        "maxValue": 6000,
+        "minValue": -6000
+      },
+      {
+        "@id": "dtmi:tibbofactory:TPS_G3_ju:Ay;1",
+        "@type": [
+          "Telemetry",
+          "NumberValue"
+        ],
+        "description": {
+          "en": "in milli g"
+        },
+        "displayName": {
+          "en": "Acceleration Y"
+        },
+        "name": "Ay",
+        "schema": "integer",
+        "unit": "gForce",
+        "displayUnit": {
+          "en": "mg"
+        },
+        "maxValue": 5999,
+        "minValue": -6000
+      },
+      {
+        "@id": "dtmi:tibbofactory:TPS_G3_ju:Az;1",
+        "@type": [
+          "Telemetry",
+          "NumberValue"
+        ],
+        "description": {
+          "en": "in milli g"
+        },
+        "displayName": {
+          "en": "Acceleration Z"
+        },
+        "name": "Az",
+        "schema": "integer",
+        "unit": "gForce",
+        "displayUnit": {
+          "en": "mg"
+        },
+        "maxValue": 6000,
+        "minValue": -6000
+      },
+      {
+        "@id": "dtmi:tibbofactory:TPS_G3_ju:IPaddr;1",
+        "@type": [
+          "Telemetry",
+          "NumberValue"
+        ],
+        "displayName": {
+          "en": "IP Address"
+        },
+        "name": "IPaddr",
+        "schema": "double"
+      },
+      {
+        "@id": "dtmi:tibbofactory:TPS_G3_ju:MACaddr;1",
+        "@type": [
+          "Telemetry",
+          "NumberValue"
+        ],
+        "displayName": {
+          "en": "MAC Address"
+        },
+        "name": "MACaddr",
+        "schema": "double"
+      }
+    ],
+    "displayName": {
+      "en": "TPS_G3"
+    },
+    "@context": [
+      "dtmi:iotcentral:context;2",
+      "dtmi:dtdl:context;2"
+    ]
+  }
+]
