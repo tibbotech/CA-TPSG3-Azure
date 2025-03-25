@@ -1,0 +1,248 @@
+{
+  "id": "67d8db3fd140e60b4285b3b0",
+  "name": "azuretest",
+  "device": "TPP2W(G3)",
+  "description": "",
+  "shortDescription": "",
+  "version": "0.1.19",
+  "runtime": "tios",
+  "features": [
+    {
+      "id": "filenum",
+      "settings": {
+        "ID": "m8dvowekkuaa1wnxkcb"
+      }
+    },
+    {
+      "id": "stg",
+      "settings": {
+        "ID": "m8dvoslq9t9oax0c93t",
+        "ENABLED": "1",
+        "STG_DEBUG_PRINT": "0",
+        "STORAGE": "EEPROM",
+        "STG_TIMESTAMP": "0",
+        "REDUNDANCY": "0",
+        "STG_MAX_NUM_SETTINGS": "0",
+        "STG_RAM_ARRAY_SIZE": "0",
+        "STG_MAX_SETTING_NAME_LEN": "0",
+        "STG_MAX_SETTING_VALUE_LEN": "0",
+        "SETTINGS": []
+      }
+    },
+    {
+      "id": "fd",
+      "settings": {
+        "ID": "m8dvow0oqm47wp0thac",
+        "ENABLED": "1",
+        "FILES": "32",
+        "SECTORS": "100"
+      }
+    },
+    {
+      "id": "tbl",
+      "settings": {
+        "ID": "m8dvoslr4bjl44qyp2i",
+        "ENABLED": "1",
+        "TBL_DEBUG_PRINT": "0",
+        "WEBENABLED": "1",
+        "TABLES": [
+          {
+            "id": "tbl_table",
+            "settings": {
+              "ID": "m8dvovmzx7dufi80t9b",
+              "NAME": "Azure",
+              "COMMENT": "",
+              "MAXRECORDS": "1000",
+              "STRUCT": "L",
+              "KEYFIELDS": "0",
+              "FIELDS": [
+                {
+                  "id": "tbl_field",
+                  "settings": {
+                    "ID": "m8dvovmzgmof7lufhhb",
+                    "NAME": "time",
+                    "DISPLAY_NAME": "",
+                    "FIELDTYPE": "S",
+                    "P1": "20",
+                    "P2": "24",
+                    "DEFAULT": "2000-00-00T00:00:00Z"
+                  }
+                },
+                {
+                  "id": "tbl_field",
+                  "settings": {
+                    "ID": "m8dvovmzo1oa9s5schd",
+                    "NAME": "type",
+                    "DISPLAY_NAME": "",
+                    "FIELDTYPE": "S",
+                    "P1": "0",
+                    "P2": "24",
+                    "DEFAULT": "^"
+                  }
+                },
+                {
+                  "id": "tbl_field",
+                  "settings": {
+                    "ID": "m8dvovmzrejv3efkod",
+                    "NAME": "value",
+                    "DISPLAY_NAME": "",
+                    "FIELDTYPE": "S",
+                    "P1": "0",
+                    "P2": "24",
+                    "DEFAULT": "^"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "sock",
+      "settings": {
+        "ID": "m8dvosxmo9dewd6cowl"
+      }
+    },
+    {
+      "id": "time",
+      "settings": {
+        "ID": "m8dvosxmdrnqmopxwos"
+      }
+    },
+    {
+      "id": "datetime",
+      "settings": {
+        "ID": "m8dvostgx092bnfnm2o"
+      }
+    },
+    {
+      "id": "dhcp",
+      "settings": {
+        "ID": "m8dvostgg4nmxeqrawa"
+      }
+    },
+    {
+      "id": "general",
+      "settings": {
+        "ID": "m8dvonq5mvjlqilev4l",
+        "LEDPAT": "1",
+        "DEVICE_NAME": "Device_Name_1",
+        "FIRMWAREVERSION": "1.0.0",
+        "INTERFACE_SWITCHING": "1",
+        "TIMEZONE": "0",
+        "LOGGING": "sys.debugprint",
+        "BEEPFREQUENCY": "2700",
+        "LATITUDE": "0",
+        "LONGITUDE": "0",
+        "TIME_FORMAT": "hh:mm:ss tt"
+      }
+    },
+    {
+      "id": "net",
+      "settings": {
+        "ID": "m8dvonq5arxe588o28o",
+        "ENABLED": "1",
+        "DHCP": "1",
+        "IP": "1.0.0.1",
+        "NM": "255.255.255.0",
+        "GI": "1.0.0.1"
+      }
+    },
+    {
+      "id": "boardsetting",
+      "settings": {
+        "ID": "m8dvonq4971eoowid08",
+        "POE": "0",
+        "5VDIRECT": "0",
+        "WIFIANTENNA": "0",
+        "GPRSANTENNA": "0",
+        "TPB": "true",
+        "VPK": "1",
+        "DIN": "1",
+        "POWERADAPTER": "apr-p0008",
+        "ASM": "asm+rp",
+        "NOTES": ""
+      }
+    },
+    {
+      "id": "dns",
+      "settings": {
+        "ID": "m8dvow0p1rxx5w5qne6",
+        "ENABLED": "1",
+        "DNS_DEBUG_PRINT": "0"
+      }
+    },
+    {
+      "id": "mqtt_lib",
+      "settings": {
+        "ID": "m8dvovmxdbychnloyhl"
+      }
+    },
+    {
+      "id": "http",
+      "settings": {
+        "ID": "m8dvovmxondcr4h67j"
+      }
+    },
+    {
+      "id": "azure",
+      "settings": {
+        "ID": "m8dvoslv0i9p8gmvjfim",
+        "ENABLED": "1",
+        "AZURE_INTERFACE": "PL_SOCK_INTERFACE_NET",
+        "AZURE_DEVICE_NAME": "Device_Name_1",
+        "AZURE_DEVICE_ID": "Device_ID_1",
+        "AZURE_SCOPE_ID": "Scope_ID_1",
+        "AZURE_DPS_SERVER": "global.azure-devices-provisioning.net",
+        "AZURE_PRIMARY_KEY": "Primary_Key_1",
+        "TELEMETRY": [
+          {
+            "id": "azure_telemetry",
+            "settings": {
+              "ID": "m8dvoslvrw62rr4p3kp",
+              "NAME": "Telemetry_Name",
+              "TELEMETRY_ID": "Telemetry_ID"
+            }
+          }
+        ],
+        "PROPERTY": [
+          {
+            "id": "azure_property",
+            "settings": {
+              "ID": "m8dvoslv0p0cwpof010k",
+              "NAME": "Property_Name",
+              "PROPERTY_ID": "STG"
+            }
+          }
+        ],
+        "COMMAND": [
+          {
+            "id": "azure_command",
+            "settings": {
+              "ID": "m8dvoslvuzqvcbl0gpo",
+              "NAME": "Command_Name",
+              "COMMAND_ID": "Command_ID"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "sntp",
+      "settings": {
+        "ID": "m8dvoslw2suj624wsrt",
+        "ENABLED": "1",
+        "DEBUGPRINT": "0",
+        "SNTP_SERVER": "216.239.35.0"
+      }
+    },
+    {
+      "id": "custom_features",
+      "settings": {
+        "ID": "m8dvoslzpk2gg9v922",
+        "FEATURES": []
+      }
+    }
+  ]
+}

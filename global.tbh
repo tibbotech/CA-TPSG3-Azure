@@ -1,0 +1,101 @@
+'DEFINES-------------------------------------------------------------
+#define WLN_AVAILABLE 0
+
+#define MQTT_CER_FILE "DigiCert.cer"
+#define DHCP_DEBUG_PRINT 1
+#define DHCP_POST_FAIL_DELAY 30
+#define DHCP_WAIT_TIME 8
+#define SOCK_MAX_SIGNATURE_LEN 32
+#define SSI_MAX_SIGNATURE_LEN 32
+#define SI2C_MAX_SIGNATURE_LEN 32
+#define SSPI_MAX_SIGNATURE_LEN 32
+#define MQTT_LARGE_PACKETS 1
+#define HTTP_DEBUG_PRINT 0
+#define MQTT_DEBUG_PRINT 1
+#define AZURE_DEBUG_PRINT 1
+#define SOCK_DEBUG_PRINT 1
+#define HTTP_DEBUG_PRINT 1
+
+
+const FIRMWARE_VERSION="{CA-TPSG3-Azure 1.0.0}"
+
+const MAX_NUM_INTERFACES=4
+
+declare AZURE_DEVICE_ID as string
+declare AZURE_SCOPE_ID as string
+declare AZURE_PRIMARY_KEY as string
+const AZURE_DPS_SERVER="global.azure-devices-provisioning.net"
+const AZURE_INTERFACE_SELECTED=PL_SOCK_INTERFACE_NET
+
+
+
+
+'INCLUDES------------------------------------------------------------
+includepp "filenum.xtxt"
+includepp "settings.xtxt"
+includepp "tables.xtxt"
+
+
+include "libraries/filenum/filenum.tbh"
+include "libraries/settings/settings.tbh"
+include "libraries/tables/tables.tbh"
+include "libraries/sock/sock.tbh"
+include "libraries/time/time.tbh"
+include "libraries/time/datetime.tbh"
+include "libraries/dhcp/dhcp.tbh"
+include "libraries/utils/utils.tbh"
+include "libraries/dns/dns.tbh"
+include "libraries/mqtt/mqtt.tbh"
+include "libraries/http/http.tbh"
+include "libraries/azure/azure.tbh"
+include "libraries/sntp/sntp.tbh"
+
+
+'DECLARATIONS--------------------------------------------------------
+
+declare function datetime_timestamp_seconds(timestamp as dword) as float            
+declare function datetime_timestamp_mins(timestamp as dword) as dword
+declare function datetime_mins_to_timestamp(mins as word) as dword
+
+
+declare sub interface_set(interface as pl_sock_interfaces, state as no_yes)
+declare sub callback_system_error(byref tag as string, byref message as string)
+
+declare interface_ready(MAX_NUM_INTERFACES) as no_yes
+
+declare DEVICE_NAME as string(50)
+declare APP_VERSION as string(20)
+declare APP_ID as string(50)
+declare TIOS_VERSION as string(30)
+declare MAC_ADDRESS as string(20)
+
+declare APP_TIMEZONE as en_td_timezones
+declare APP_LATITUDE as float
+declare APP_LONGITUDE as float
+
+
+
+declare current_interface as pl_sock_interfaces
+
+declare sub change_current_interface(new_interface as pl_sock_interfaces)
+declare sub close_interface_sockets(interface as pl_sock_interfaces)
+
+declare device_net_ip as string(16)
+declare device_net_mask as string(16)
+declare device_net_gateway as string(16)
+declare net_dhcp_enabled as boolean
+
+declare DNS_socket as byte
+
+declare azure_device_name as string
+
+declare SNTP_socket as byte
+declare SNTP_SERVER as string(16)
+
+
+
+declare sub boot()
+declare sub read_debugprint_Onboard_Sensors()
+declare function get_http_argument(byref http_req_string as string, byref argument as string) as string
+declare sub proc_httprqstring()
+declare sub sock_setsend(byref s as string)

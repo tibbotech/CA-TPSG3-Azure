@@ -1,0 +1,553 @@
+include "global.tbh"
+
+dim mqtt_connect_lost as no_yes=NO
+dim azure_current_url as string
+dim AZURE_DEVICE_ID as string
+dim AZURE_SCOPE_ID as string
+dim AZURE_PRIMARY_KEY as string
+
+declare sub azure_get_timestring(byref ts_str as string(20),	
+	byref time_daycount as word,
+	byref time_mincount as word,
+	byref time_second_byte as byte)
+		
+sub callback_stg_error(byref stg_name_or_num as string,index as byte,status as en_stg_status_codes)
+    
+end sub
+        
+
+sub callback_stg_pre_get(byref stg_name_or_num as string,index as byte,byref stg_value as string)
+    
+end sub
+        
+
+sub callback_stg_post_set(byref stg_name_or_num as string, index as byte,byref stg_value as string)
+    
+    
+        select case stg_name_or_num
+        case "STG":
+            azure_send_property(stg_name_or_num, stg_value)
+        end select  
+                
+end sub
+        
+
+function callback_stg_vm_read(address as word) as byte
+    
+end function
+        
+
+sub callback_stg_vm_write(data_to_write as byte, address as word)
+    
+end sub
+
+sub callback_tbl_error(status as en_tbl_status_codes)
+    
+end sub
+        
+
+function callback_tbl_fail_to_open(byref filename as string, status as pl_fd_status_codes, filenum as byte) as no_yes
+    
+end function
+        
+
+sub callback_tbl_field_error(byref file_name as string,byref field_name as string,tbl_result as en_tbl_status_codes)
+    
+end sub
+        
+
+sub callback_tbl_modified(byref file_name as string, modified_operation as en_tbl_modified_operation)
+    
+end sub
+        
+
+function datetime_timestamp_seconds(timestamp as dword) as float
+    datetime_timestamp_seconds=datetime_timestamp_mins(timestamp) * 60 + (timestamp MOD 60)
+end function
+
+function datetime_timestamp_mins(timestamp as dword) as dword
+    dim days as word = 0
+    dim mins as word = 0
+    dim secs as byte = 0
+    dim mins_offset as integer=0
+    td_get_tzone_offset(APP_TIMEZONE,mins_offset)
+    datetime_from_timestamp(timestamp + mins_offset * 60, days, mins, secs)
+    datetime_timestamp_mins=mins
+end function
+
+function datetime_mins_to_timestamp(mins as word) as dword
+    dim datetime_days,datetime_minutes as word
+    dim datetime_secs as byte
+    dim timestamp as dword=datetime_current_timestamp()
+    datetime_from_timestamp(timestamp,datetime_days,datetime_minutes,datetime_secs)
+    datetime_minutes=mins
+    td_local_to_gmt(datetime_days,datetime_minutes,APP_TIMEZONE,PL_OFF)
+    datetime_mins_to_timestamp=datetime_to_timestamp(datetime_days,datetime_minutes,0)
+end function
+
+
+sub callback_dhcp_ok(renew as no_yes, interface as pl_sock_interfaces, byref ip as string, byref gateway_ip as string, byref netmask as string, lease_time as dword)
+    
+        if interface=PL_SOCK_INTERFACE_NET then
+            if renew=YES and net.ip<>ip then
+                'this is a lease renewal and the DHCP server has issues new IP
+                'it is better to reboot than deal with the implications of the changed IP
+                sys.reboot
+            end if
+    
+            #if DEV_DEBUG_PRINT
+                dev_debugprint("Ethernet DHCP OK ("+ip+")")
+            #endif
+    
+            if net.ip<>ip then
+                sock.inconenabledmaster=NO
+                close_interface_sockets(PL_SOCK_INTERFACE_NET)
+                net.ip=ip
+                if gateway_ip<>"" then net.gatewayip=gateway_ip
+                if netmask<>"" then net.netmask=netmask
+                sock.inconenabledmaster=YES
+            end if
+            
+            interface_set(PL_SOCK_INTERFACE_NET,YES)
+        end if
+                
+end sub
+        
+
+sub callback_dhcp_failure(interface as pl_sock_interfaces,failure_code as en_dhcp_status_codes)
+    
+end sub
+        
+
+sub callback_dhcp_pre_clear_ip(interface as pl_sock_interfaces)
+    
+end sub
+        
+
+sub callback_dhcp_pre_buffrq(required_buff_pages as byte)
+    
+end sub
+        
+
+sub callback_dhcp_buff_released()
+    
+end sub
+        
+
+sub interface_set(interface as pl_sock_interfaces, state as no_yes)
+    dim best_interface as pl_sock_interfaces=PL_SOCK_INTERFACE_NULL
+    dim cell_starting as boolean=false
+    
+    if state = YES then
+        interface_ready(interface) = YES
+    else
+        interface_ready(interface) = no
+    end if
+    if interface_ready(PL_SOCK_INTERFACE_NET) = YES then
+        best_interface = PL_SOCK_INTERFACE_NET
+    else
+        #IF WLN_AVAILABLE
+            if interface_ready(PL_SOCK_INTERFACE_WLN) = YES then
+                best_interface = PL_SOCK_INTERFACE_WLN
+            end if
+        #ENDIF
+        if best_interface=PL_SOCK_INTERFACE_NULL then
+        #IF CELLULAR_AVAILABLE
+            if interface_ready(PL_SOCK_INTERFACE_PPP) = YES then
+                best_interface = PL_SOCK_INTERFACE_PPP
+                cell_started=false
+            else
+                cell__start(CELL__SIMCARD_PIN, CELL__AT_APN, CELL__MYUSERNAME, CELL__MYPASSWORD)
+                cell_starting=true
+                cell_started=true
+            end if
+        #ENDIF
+        end if
+    end if
+    #IF CELLULAR_AVAILABLE
+    if best_interface<>PL_SOCK_INTERFACE_PPP AND cell_starting=false then
+        cell_started=false
+        signal_strength_set(0)
+        cell__stop( PHASE_PWR_IDLE, PHASE_AT_IDLE, PHASE_PPP_IDLE, PHASE_GPS_IDLE, PHASE_PARSE_IDLE)
+        interface_ready(PL_SOCK_INTERFACE_PPP) = NO
+    end if
+    #ENDIF
+    
+    if best_interface<>PL_SOCK_INTERFACE_NULL then
+        change_current_interface(best_interface)
+    end if
+    
+end sub
+
+
+sub close_interface_sockets(interface as pl_sock_interfaces)
+    dim f,sock_num_bup as byte
+    dim i as word
+
+    sock_num_bup=sock.num
+
+    for f=0 to sock.numofsock-1
+        sock.num=f
+        if sock.targetinterface=interface then
+            sock.close()
+            sock.discard()
+        end if
+    next f
+
+    i=sys.timercount
+
+    wait_close_interface_sockets:
+    for f=0 to sock.numofsock-1
+        sock.num=f
+        if sock.targetinterface=interface and sock.statesimple<>PL_SSTS_CLOSED and sys.timercount-i<5 and sys.timercount>=i then
+            goto wait_close_interface_sockets
+        end if
+    next f
+
+    sock.num=sock_num_bup
+
+end sub
+
+sub callback_system_error(byref tag as string, byref message as string)
+    
+    #IFDEF RETARGET_DEBUG_PRINT
+        sys.trace("ERR-" + tag + ">" + message)
+    #ELSE
+        sys.debugprint("ERR-" + tag + ">" + message)
+    #ENDIF
+end sub
+ 
+
+sub change_current_interface(new_interface as pl_sock_interfaces)
+    if current_interface<>new_interface then
+        
+        
+        mqtt_stop()
+        
+        sock.inconenabledmaster=NO
+        close_interface_sockets(current_interface)
+
+        current_interface=new_interface        
+        
+        select case current_interface
+            case PL_SOCK_INTERFACE_NET: sys.debugprint("Set current interface to Ethernet\r\n") 
+        
+            case PL_SOCK_INTERFACE_WLN: sys.debugprint("Set current interface to Wi-Fi\r\n")
+        
+            case PL_SOCK_INTERFACE_PPP: sys.debugprint("Set current interface to Cellular\r\n")
+        end select
+        sock.inconenabledmaster=YES
+        if new_interface <> PL_SOCK_INTERFACE_NULL then
+            
+            azure_start(AZURE_DEVICE_ID,AZURE_SCOPE_ID,AZURE_DPS_SERVER,AZURE_PRIMARY_KEY,AZURE_INTERFACE_SELECTED)
+            
+                sntp_start(current_interface,SNTP_SERVER, 0, SNTP_socket)
+        end if
+    end if
+end sub
+
+sub callback_dns_failure(status as en_dns_status_codes)
+    
+end sub
+        
+
+sub callback_dns_answer_acquired(return_type as en_dns_return_type, byref return_string as string)
+    
+    
+    mqtt_dns_answer_acquired(return_type, return_string)
+    
+    http_dns_answer_acquired(return_type, return_string)
+    'if return_type=EN_DNS_RET_IP then
+    '    sys.debugprint("DNS:" + ddstr(return_string) + "\r\n")
+    'end if
+end sub
+        
+
+sub callback_dns_ok()
+    
+end sub
+        
+
+sub callback_dns_pre_buffrq(num_of_pages_required as byte)
+    
+end sub
+        
+
+sub callback_dns_buff_released()
+    
+end sub
+        
+
+sub callback_mqtt_connect_ok()
+    pat.play("G~",PL_PAT_CANINT)
+    
+    azure_on_connected()
+		
+	azure_send_property("IPaddr",net.ip)
+end sub
+        
+
+sub callback_mqtt_connect_lost()
+
+    azure_on_disconnected()
+    pat.play("-",PL_PAT_CANINT)
+    mqtt_connect_lost=YES
+end sub
+        
+
+function mqtt_topic_match(subscribed_topic as string, current_topic as string) as boolean
+    mqtt_topic_match=false
+    if subscribed_topic = current_topic then
+        mqtt_topic_match=true
+    else
+        dim index as byte=instr(1,subscribed_topic,"/",1)
+        dim start as byte=1
+        while index<>0
+            mqtt_topic_match=true
+            dim section as string=mid(subscribed_topic,start,index-start)
+            if section="#" then
+                ' multi level wildcard
+                exit while
+            end if
+            if section="+" OR section=mid(current_topic,start,index-start) then
+                if index<=len(subscribed_topic) then
+                    start=index+1
+                    index=instr(start,subscribed_topic,"/",1)
+                    if index=0 then 
+                        index=len(subscribed_topic)+1
+                    end if
+                else
+                    exit while
+                end if
+            else
+                mqtt_topic_match=false
+                exit while
+            end if
+        wend
+    end if
+end function
+
+sub callback_mqtt_notif(byref topic as string,byref data as string,remaining_bytes as dword)
+    
+    
+        azure_proc_mqtt_msg(topic,data)
+                
+end sub
+
+sub callback_mqtt_sub_ok()
+    
+end sub
+        
+
+sub callback_http_reponse_code_arrival(http_response as string)
+    
+end sub
+
+
+sub callback_http_request_failed(error_message as string)
+    
+end sub
+
+
+sub callback_http_header_arrival(header_type as string, header_value as string)
+    
+    
+        iot_header_arrival(header_type, header_value)
+        
+end sub
+
+
+sub callback_http_headers_complete()
+    
+end sub
+
+
+sub callback_http_content_arrival(data as string)
+    
+    
+        azure_content_arrival(data)
+    
+end sub
+
+
+sub callback_http_post_data_sent_ok()
+    
+end sub
+
+
+sub callback_http_send_post_data(remaining_content_length as dword)
+    
+end sub
+
+
+sub callback_http_send_headers()
+    
+    
+        iot_send_headers()
+        
+end sub
+
+
+sub callback_http_request_complete()
+    
+    
+        azure_http_request_complete()
+    
+end sub
+
+
+sub callback_http_response_code_arrival(http_response as string)
+    
+end sub
+
+
+function callback_http_open_romfile() as dword
+    callback_http_open_romfile=0
+    
+    
+        if http_request_item.url = azure_current_url then
+            romfile.open("DigiCert.cer")
+            callback_http_open_romfile=romfile.offset    
+'			callback_http_open_romfile=0
+        end if
+        
+end function
+
+
+sub callback_azure_command_triggered(byref command as string, byref param as string, rid as string)
+    select case command
+    case "Command_ID":
+    
+    case else:
+    end select
+
+    azure_command_respond(command,"{}",rid,EN_AZURE_OK)
+end sub
+        
+
+sub callback_azure_dps_failed()
+    
+end sub
+
+
+sub callback_azure_device_assigned(byref assigned_hub as string)
+    
+end sub
+        
+
+sub callback_on_telemetry_sent()
+    
+    dim active_rec_num as word
+    tbl_select("Azure","Azure")
+    tbl_get_num_records(active_rec_num,NO)
+    if active_rec_num>0 then
+        tbl_record_delete(1)
+    end if
+end sub        
+        
+
+sub callback_sntp_failure(sntp_status as en_sntp_status_codes)
+    sys.debugprint("SNTP failed\r\n")
+    
+end sub
+        
+
+sub callback_sntp_ok(byref w_days as word,byref w_mins as word,byref b_seconds as byte)
+    td_gmt_to_local(w_days,w_mins,APP_TIMEZONE,PL_OFF)
+    rtc.setdata(w_days,w_mins,b_seconds)
+    
+end sub
+        
+
+sub callback_sntp_pre_buffrq(required_buff_pages as byte)
+    
+end sub
+        
+'====================================================================
+sub read_debugprint_Onboard_Sensors()
+	dim accelx, accely, accelz as short
+	dim temp as real
+	dim daycounts, mincounts as word
+	dim seconds as byte
+	dim ts as string(36)
+	
+	temp=sys.boardtemp
+	sys.debugprint("temperature : "+fstr(temp)+"\r\n")
+	
+	sys.captureaccel
+	accelx = sys.readaccelx
+	accely = sys.readaccely
+	accelz = sys.readaccelz
+	sys.debugprint("X : "+stri(accelx)+" | Y : "+stri(accely)+" | Z : "+ stri(accelz)+"\r\n")
+	
+	rtc.getdata(daycounts,mincounts,seconds)
+	azure_get_timestring(ts,daycounts,mincounts,seconds)
+	
+	azure_store_telemetry("Onboardtemp", ftofixed(temp,4), ts)
+	azure_store_telemetry("Ax", stri(accelx), ts)
+	azure_store_telemetry("Ay", stri(accely), ts)
+	azure_store_telemetry("Az", stri(accelz), ts)
+	
+end sub
+
+'=============================================================
+public function get_http_argument(byref http_req_string as string, byref argument as string) as string
+'This is out own function. We parse "HTTP variables" supplied in the HTTP POST request after
+'login and extract user name and password that you have typed into the HTML form.
+
+	dim x, y as byte
+	
+	do
+		x = instr(1, http_req_string, "%",1)
+	
+		if x > 0 then
+			dim s as string
+			s = chr ("&h" + mid(http_req_string,x+1,2))
+			http_req_string = left(http_req_string,x-1)+s+right(http_req_string,len(http_req_string)-x-2)
+		end if
+	loop while x > 0
+	x = instr(1, http_req_string, argument,1)
+	if (x = 0) then
+		get_http_argument = ""
+		exit function
+	end if
+	
+	x = x + len(argument)
+	
+	y = instr(x, http_req_string, "&",1)
+	if (y = 0) then
+		y = instr(x, http_req_string, " ",1)	
+		if (y = 0) then
+			y = len(argument)
+		end if
+	end if
+	
+	get_http_argument = mid(http_req_string, x, y - x)
+end function
+
+public sub proc_httprqstring()
+	dim http_req_string as string
+	dim id_scope as string
+	dim device_id as string
+	dim primary_key as string
+	
+	http_req_string = sock.gethttprqstring(100)+" "		'we add the empty space after the http_req_string so that our parsing function will work correctly under POST.
+	
+	if instr(1,http_req_string,"id_scope=",1) > 0 and instr(1,http_req_string,"device_id=",1) > 0 and instr(1,http_req_string,"primary_key=",1) > 0 then
+	
+		id_scope = get_http_argument(http_req_string, "id_scope=")
+		device_id = get_http_argument(http_req_string, "device_id=")
+		primary_key = get_http_argument(http_req_string, "primary_key=")+"="
+		
+		stg_set("SCID", 0, id_scope)
+		stg_set("DVID", 0, device_id)
+		stg_set("PKEY", 0, primary_key)
+	end if
+		
+end sub
+
+'-------------------------------------------------------
+public sub sock_setsend(byref s as string)
+	sock.setdata(s)
+	sock.send
+end sub

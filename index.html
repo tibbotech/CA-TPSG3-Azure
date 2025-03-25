@@ -1,0 +1,49 @@
+<?
+	include "global.tbh"
+	
+	proc_httprqstring()
+?>
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD W3 HTML//EN">
+<HTML>
+	<BODY>
+		<h1>TPP G3 Sample Project</h1>
+		<h2>Azure Server Credentials</h2>
+		<div class="border1">
+			<table border="0" cellspacing="7" cellpadding="0" >
+				<form action="index.html" method="post">
+					<tr>
+						<td width=30%>ID Scope</td>
+						<td width=70%>
+							<input  type="text" name="id_scope" value="<?sock_setsend(stg_get("SCID",0))?>" size="30" tabindex="2" class="input100">
+						</td>
+					</tr>
+	
+					<tr>
+						<td width=30%>Device ID</td>
+						<td width=70%>
+							<input type="text" name="device_id" value="<?sock_setsend(stg_get("DVID",0))?>" size="30" tabindex="2" class="input100">
+						</td>
+					</tr>
+
+					<tr>
+						<td width=30%>Primary Key</td>
+						<td width=70%>
+							<input type="password" name="primary_key" value="<?sock_setsend(stg_get("PKEY",0))?>" size="30" tabindex="2" class="input100">
+						</td>
+					</tr>
+					
+					<td colspan="2">
+						<table border="0" cellspacing="0" cellpadding="0">
+							<tr>
+								<td><input type="submit" value="Save" tabindex="2"></td>
+								<td>&nbsp;&nbsp;&nbsp;</td>
+							</tr>
+						</table>
+					</td>
+					</tr>
+				</form>
+			</table>
+		</div>
+	</BODY>
+</HTML>

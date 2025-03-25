@@ -1,0 +1,14 @@
+[platform]
+description=EM203 Module
+version=EM203-2.07
+rom=63488
+ram=20480
+codebits=16
+sector=1
+
+[transport1]
+name=udp_broadcast
+description=Taiko UDP Broadcast Transport
+device=taiko.udpdevice
+browsedlg=em202ui.browsedlg
+

@@ -1,0 +1,114 @@
+include "global.tbh"
+
+
+
+dim interface_ready(MAX_NUM_INTERFACES) as no_yes
+
+dim TIOS_VERSION as string(30)
+#IF PLATFORM_ID=WM2000 OR PLATFORM_ID=WS1102
+dim MAC_ADDRESS as string(20)=wln.mac
+#ELSE
+dim MAC_ADDRESS as string(20)=net.mac
+#ENDIF
+dim DEVICE_NAME as string(50)="azuretest"
+dim APP_VERSION as string(20)="1.0.0"
+dim APP_ID as string(50)="67d8db3fd140e60b4285b3b0"
+
+dim current_interface as pl_sock_interfaces
+
+dim APP_TIMEZONE as en_td_timezones
+dim APP_LATITUDE as float
+dim APP_LONGITUDE as float
+
+
+dim device_net_ip as string(16)
+dim device_net_mask as string(16)
+dim device_net_gateway as string(16)
+dim net_dhcp_enabled as boolean
+
+dim DNS_socket as byte
+
+dim azure_device_name as string = "Device_Name_1"
+
+
+dim SNTP_socket as byte
+dim SNTP_SERVER as string(16)
+
+dim timer_1s_m8fiiq3i249gibdbyas_timer as dword
+
+dim timer_1s_m8fiiq3i249gibdbyas_count as dword
+
+
+
+
+sub on_sys_init()
+
+    boot()
+	
+	timer_1s_m8fiiq3i249gibdbyas_timer = 60 * 1000 / sys.onsystimerperiod / 10
+	
+end sub
+
+
+sub on_sys_timer()
+    dhcp_proc_timer()
+	dns_proc_timer()
+
+    mqtt_proc_timer()
+    http_proc_timer()
+ 
+    azure_proc_timer()
+	sntp_proc_timer()
+	
+	timer_1s_m8fiiq3i249gibdbyas_count = timer_1s_m8fiiq3i249gibdbyas_count + 1
+    if timer_1s_m8fiiq3i249gibdbyas_count > timer_1s_m8fiiq3i249gibdbyas_timer then
+        '****m8fiiq3i249gibdbyas_timer_tick****'
+		
+		read_debugprint_Onboard_Sensors()
+		       
+        timer_1s_m8fiiq3i249gibdbyas_count = 0
+    end if
+
+end sub
+
+
+sub on_sock_data_arrival()
+    dhcp_proc_data()
+	dns_proc_data()
+	mqtt_proc_data()
+
+    http_proc_data()
+	sntp_proc_data()
+
+end sub
+
+
+sub on_net_link_change()
+
+    if net.linkstate=PL_NET_LINKSTAT_NOLINK then
+        interface_set(PL_SOCK_INTERFACE_NET,NO)
+        
+    else
+        if net_dhcp_enabled = false then
+            interface_set(PL_SOCK_INTERFACE_NET,YES)
+        end if
+    end if
+
+end sub
+
+
+sub on_sock_event(newstate as pl_sock_state,newstatesimple as pl_sock_state_simple)
+	mqtt_sock_event(newstate, newstatesimple)
+
+    http_sock_state_update(newstatesimple)
+	sntp_proc_sock_event(newstate)
+
+end sub
+
+
+sub on_sock_data_sent()
+
+    azure_on_telemetry_sent()
+
+end sub
+

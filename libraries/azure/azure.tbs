@@ -1,0 +1,827 @@
+include "global.tbh"
+
+const AZURE_INIT_SIGNATURE=&h1FD3
+const AZURE_TOPIC_METHOD="$iothub/methods/POST/"
+const AZURE_TOPIC_PROPERTY_DESIRED="$iothub/twin/PATCH/properties/desired/"
+const AZURE_TOPIC_PROPERTY_REPORTED="$iothub/twin/PATCH/properties/reported/"
+const AZURE_TOPIC_TWIN="$iothub/twin/"
+const AZURE_TOPIC_STREAMS="$iothub/streams/POST/"
+const AZURE_TOPIC_RESULT="$iothub/twin/res/"
+const AZURE_API_VERSION="?api-version=2019-03-31"
+const AZURE_MQTT_API_VERSION="?api-version=2018-06-30"
+const TOPIC_TIMESTAMP="iothub-creation-time-utc="
+
+dim azure_state as en_azure_states
+dim azure_rid as dword=0
+dim device_bound_message_topic as string(64)
+dim server_bound_message_topic as string
+dim azure_init_flag as word = 0
+dim azure_num_of_suback as byte
+dim azure_dps_sock as byte = 255
+dim azure_current_dps_server as string(64)=""
+dim azure_assigned_hub as string(64)=""
+dim azure_current_scope_id as string(16)
+dim azure_current_device_id as string(32)
+dim azure_current_primary_key as string(64)
+dim azure_sas_token as string
+dim azure_timer as byte=0
+dim azure_dps_authorization as string
+dim azure_current_json_key as string
+dim azure_current_json_value as string
+dim azure_http_buf as string
+dim azure_assigned_status as boolean
+dim azure_interface as pl_sock_interfaces
+
+dim sha256_k as dword(64) = {
+    &H428a2f98,&H71374491,&Hb5c0fbcf,&He9b5dba5,&H3956c25b,&H59f111f1,&H923f82a4,&Hab1c5ed5,
+	&Hd807aa98,&H12835b01,&H243185be,&H550c7dc3,&H72be5d74,&H80deb1fe,&H9bdc06a7,&Hc19bf174,
+	&He49b69c1,&Hefbe4786,&H0fc19dc6,&H240ca1cc,&H2de92c6f,&H4a7484aa,&H5cb0a9dc,&H76f988da,
+	&H983e5152,&Ha831c66d,&Hb00327c8,&Hbf597fc7,&Hc6e00bf3,&Hd5a79147,&H06ca6351,&H14292967,
+	&H27b70a85,&H2e1b2138,&H4d2c6dfc,&H53380d13,&H650a7354,&H766a0abb,&H81c2c92e,&H92722c85,
+	&Ha2bfe8a1,&Ha81a664b,&Hc24b8b70,&Hc76c51a3,&Hd192e819,&Hd6990624,&Hf40e3585,&H106aa070,
+	&H19a4c116,&H1e376c08,&H2748774c,&H34b0bcb5,&H391c0cb3,&H4ed8aa4a,&H5b9cca4f,&H682e6ff3,
+	&H748f82ee,&H78a5636f,&H84c87814,&H8cc70208,&H90befffa,&Ha4506ceb,&Hbef9a3f7,&Hc67178f2
+}
+
+type sha256_ctx
+    data as byte(64)
+    datalen as word
+    bitlen as long
+    state as dword(8)
+end type
+
+
+declare azure_current_url as string
+declare mqtt_sock_num as byte
+
+declare function azure_generate_sas_token(byref resourceUri as string, byref signingKey as string, expiresInMins as word) as string
+declare sub azure_debugprint(byref print_data as string)
+declare sub azure_dps_device_provisioning()
+declare sub azure_http_reset()
+declare sub hmac_sha256(byref key as string, byref data as string, byref result as string)
+
+public sub azure_start(byref device_id as string, byref scope_id as string, byref dps_url as string, byref symmetricKey as string, interface as pl_sock_interfaces)
+	if device_id="" or scope_id="" or dps_url="" or symmetricKey="" then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() invalid parameters")
+		#endif
+		exit sub
+	end if
+	azure_init_flag=AZURE_INIT_SIGNATURE
+	
+	azure_current_device_id=device_id
+	azure_current_scope_id=scope_id
+	azure_current_dps_server=dps_url
+	azure_current_primary_key=symmetricKey
+	server_bound_message_topic="devices/"+azure_current_device_id+"/messages/events/"
+	device_bound_message_topic="devices/"+azure_current_device_id+"/messages/devicebound/"
+	azure_state=EN_AZURE_NOT_CONNECTED
+	azure_interface=interface
+	
+end sub
+
+public sub azure_on_connected()
+
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+
+	mqtt_sub(device_bound_message_topic+"#",QOS_AT_MOST_ONCE)
+	mqtt_sub(AZURE_TOPIC_METHOD+"#",QOS_AT_MOST_ONCE)
+	mqtt_sub(AZURE_TOPIC_RESULT+"#",QOS_AT_MOST_ONCE)
+	mqtt_sub(AZURE_TOPIC_PROPERTY_DESIRED+"#",QOS_AT_MOST_ONCE)
+	mqtt_sub(AZURE_TOPIC_STREAMS+"#",QOS_AT_MOST_ONCE)
+
+	#if AZURE_DEBUG_PRINT
+		azure_debugprint("Server connected.")
+	#endif
+	azure_state=EN_AZURE_CONNECTED
+end sub
+
+public sub azure_on_disconnected()
+	
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+	#if AZURE_DEBUG_PRINT
+		azure_debugprint("Disconnected from server.")
+	#endif
+	azure_state=EN_AZURE_NOT_CONNECTED
+end sub
+
+public sub azure_proc_mqtt_msg(byref topic as string,byref data as string)
+	
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+	
+	dim topic_len as byte=len(AZURE_TOPIC_METHOD)
+	dim pos1, pos2, pos3 as byte=0
+	dim item_name as string
+	dim value as string
+	dim s as string
+	dim rid as string
+	dim c as byte=0
+	
+	if instr(1,topic,AZURE_TOPIC_METHOD,1)>0 then
+		pos1=instr(topic_len+1,topic,"/",1)
+		item_name=mid(topic,topic_len+1,pos1-topic_len-1)
+		pos1=instr(topic_len+1,topic,"$rid=",1)
+		rid=right(topic, len(topic)-pos1-4)
+		callback_azure_command_triggered(item_name,data,rid)
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("Command: "+item_name+" Data: "+data)
+		#endif				
+		exit sub
+	end if
+
+	if instr(1, topic,AZURE_TOPIC_TWIN,1)>0 then
+		if instr(1, topic,"/res/400",1)>0 then
+			exit sub
+		end if			
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("Properties update: "+data)
+		#endif		
+		pos1=instr(1,data,"desired",1)
+		do 
+			pos2=instr(pos1,data,"{",1)
+			pos3=instr(pos1,data,"}",1)
+			if pos2>0 and pos2<pos3 then
+				pos1=pos2+1
+				c=c+1
+			else
+				if pos3>0 then
+					c=c-1
+					if c=0 then
+						s=mid(data,pos1,pos3-pos1)
+					end if
+					pos1=pos3+1
+				end if
+			end if
+			if pos2=0 and pos3=0 then
+				c=0
+			end if			
+		loop while c>0
+
+		pos1=1
+		do 
+			pos2=instr(pos1,s,":",1)
+			if pos2>0 then
+				item_name=mid(s,pos1+1,pos2-pos1-2)
+				pos3=instr(pos2,s,",",1)
+				if pos3=0 then
+					pos3=len(s)+1
+				end if
+				value=mid(s,pos2+1,pos3-pos2-1)
+				dim prev_value as string=stg_get(item_name,0)
+				if value<>prev_value then
+					#if AZURE_DEBUG_PRINT
+						azure_debugprint("Remote value of \x22"+item_name+"\x22 was "+prev_value+" changed to: "+value)
+					#endif							
+					pos1=instr(1,topic,"$rid=",1)
+					if pos1>0 then
+						rid=right(topic, len(topic)-pos1-4)
+						azure_rid=lval(rid)
+					end if
+					'Double confirm setting is set correctly here
+					if stg_sg(item_name,0,value,EN_STG_SET)=EN_STG_STATUS_OK then
+						value="{\x22"+item_name+"\x22:"+value+"}"
+						azure_rid=azure_rid+1
+						mqtt_publish(AZURE_TOPIC_PROPERTY_REPORTED+"?$rid="+str(azure_rid),value,QOS_AT_MOST_ONCE,false)
+					end if
+				end if
+				pos1=pos3+1
+			end if
+		loop while pos2>0		
+	end if
+end sub
+
+public sub azure_command_respond(byref command as string, byref returns as string, rid as string, result as en_azure_command_codes)
+
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+	dim topic as string
+	if returns="" then
+		returns="{}"
+	end if
+	topic="$iothub/methods/res/"+str(result)+"/?$rid="+rid
+	mqtt_publish(topic,returns,QOS_AT_MOST_ONCE,false)
+	
+end sub
+
+public sub azure_proc_timer()
+
+	select case azure_state
+	case EN_AZURE_NOT_CONNECTED:
+		azure_device_lookup()			
+	case EN_AZURE_NOT_PROVISIONED:
+		azure_dps_device_provisioning()
+	case EN_AZURE_CONNECTED
+		azure_send_telemetry()
+	end select	
+	
+end sub
+
+public function azure_update_json(byref original as string, byref attribute as string, byref value as string) as string
+	if original="" then
+		original="{}"
+	end if
+	
+	while right(original,1)<>"}"
+		original=left(original,len(original)-1)
+	wend
+		
+	if original="{}" then
+		if left(value,1)="{" and right(value,1)="}" then
+			azure_update_json="{\x22"+attribute+"\x22:"+value+"}"
+		else
+			azure_update_json="{\x22"+attribute+"\x22:\x22"+value+"\x22}"
+		end if
+	else
+		if left(value,1)="{" and right(value,1)="}" then
+			azure_update_json=left(original,len(original)-1)+","+"\x22"+attribute+"\x22:"+value+"}"
+		else
+			azure_update_json=left(original,len(original)-1)+","+"\x22"+attribute+"\x22:\x22"+value+"\x22}"
+		end if
+	end if
+end function
+
+sub azure_send_property(prop_name as string, prop_value as string)
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+	dim json as string
+	json = azure_update_json(json,prop_name,prop_value)
+	azure_rid=azure_rid+1
+	mqtt_publish(AZURE_TOPIC_PROPERTY_REPORTED + "?$rid="+str(azure_rid),json,QOS_AT_MOST_ONCE,false)
+
+end sub
+
+public sub azure_mqtt_sub_ok()
+	azure_num_of_suback=azure_num_of_suback+1
+	if azure_num_of_suback>4 then
+		azure_rid=azure_rid+1
+		mqtt_publish(AZURE_TOPIC_TWIN+"GET/?$rid="+str(azure_rid),"{}",QOS_AT_MOST_ONCE,false)
+	end if
+end sub
+
+public sub azure_send_telemetry()
+
+	if azure_state<>EN_AZURE_CONNECTED then
+		exit sub
+	end if
+	
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+	
+	dim ts as string(36)
+	dim same_ts as boolean = true
+	dim json as string
+
+	while same_ts = true
+		dim active_rec_num as word			
+		tbl_select("Azure","Azure")
+		tbl_get_num_records(active_rec_num,NO)
+		if active_rec_num>0 then
+			if tbl_record_read_active(1)=EN_TBL_STATUS_OK then
+				dim record_type, record_value as string(36)
+				tbl_field_sg("time",ts,EN_TBL_GET)
+				tbl_field_sg("type", record_type,EN_TBL_GET)
+				tbl_field_sg("value",record_value ,EN_TBL_GET)	
+				tbl_record_delete(1)	
+				json=azure_update_json(json,record_type,record_value)
+				dim next_ts as string
+				tbl_get_num_records(active_rec_num,NO)
+				if active_rec_num>0 then
+					if tbl_record_read_active(1)=EN_TBL_STATUS_OK then
+						tbl_field_sg("time",next_ts,EN_TBL_GET)
+						if ts <> next_ts then
+							same_ts = false
+						end if
+					end if
+				else
+					same_ts = false
+				end if				
+			end if
+		else
+			exit sub
+		end if
+	wend
+	
+			
+	dim pos as byte
+	if ts<>"" then
+		pos=instr(1,server_bound_message_topic,TOPIC_TIMESTAMP,1)
+		if pos>0 then
+				server_bound_message_topic=left(server_bound_message_topic,pos-1)+TOPIC_TIMESTAMP+ts
+		else
+			server_bound_message_topic=server_bound_message_topic+TOPIC_TIMESTAMP+ts
+		end if
+	end if
+	
+	sock.num=mqtt_sock_num
+	sock.notifysent(0)
+	mqtt_publish(server_bound_message_topic,json,QOS_AT_MOST_ONCE,false)					
+	callback_on_telemetry_sent()
+
+end sub
+
+sub azure_set_datetime(byref dt_string as string)
+	
+	'Mon, 08 Feb 2021 03:16:19 GMT
+	dim daycounts, mincounts as word
+	dim curr_daycounts, curr_mincounts as word
+	dim syear,smonth,sdate,shour,smin,ssec as string(4)
+	dim b as byte
+	
+	syear=mid(dt_string,15,2)
+	smonth=mid(dt_string,9,3)
+	sdate=mid(dt_string,6,2)
+	shour=mid(dt_string,18,2)
+	smin=mid(dt_string,21,2)
+	ssec=mid(dt_string,24,2)
+	
+	select case smonth
+	case "Jan": smonth="01"
+	case "Feb": smonth="02"
+	case "Mar": smonth="03"
+	case "Apr": smonth="04"
+	case "May": smonth="05"
+	case "Jun": smonth="06"
+	case "Jul": smonth="07"
+	case "Aug": smonth="08"
+	case "Sep": smonth="09"
+	case "Oct": smonth="10"
+	case "Nov": smonth="11"
+	case "Dec": smonth="12"
+	case else:
+	end select
+	daycounts=daycount(val(syear),val(smonth),val(sdate))
+	mincounts=mincount(val(shour),val(smin))
+	
+	rtc.getdata(curr_daycounts,curr_mincounts, b)
+	if curr_daycounts<>daycounts or curr_mincounts<>mincounts then
+		b=val(ssec) 	
+		rtc.setdata(daycounts,mincounts,b)
+	end if
+		
+end sub
+
+sub azure_get_timestring(byref ts_str as string(20),	
+	byref time_daycount as word,
+	byref time_mincount as word,
+	byref time_second_byte as byte)
+	dim time_year_str, time_month_str, time_date_str, time_hour_str, time_minute_str, time_second_str as string(4)
+
+	time_year_str=str(year(time_daycount)+2000)
+	time_month_str=str(month(time_daycount))
+	time_date_str=str(date(time_daycount))
+	time_hour_str=str(hours(time_mincount))
+	time_minute_str=str(minutes(time_mincount))
+	time_second_str=str(time_second_byte)
+
+	if len(time_hour_str) < 2 then 
+		time_hour_str="0"+time_hour_str 
+	end if
+	if len(time_minute_str) < 2 then 
+		time_minute_str="0"+time_minute_str 
+	end if
+	if len(time_second_str) < 2 then 
+		time_second_str="0"+time_second_str 
+	end if
+	if len(time_date_str) < 2 then 
+		time_date_str="0"+time_date_str 
+	end if
+	if len(time_month_str) < 2 then 
+		time_month_str="0"+time_month_str 
+	end if
+	ts_str=time_year_str+"-"+time_month_str+"-"+time_date_str+"T"+time_hour_str+":"+time_minute_str+":"+time_second_str
+	ts_str=ts_str+".000Z"
+
+end sub
+
+public sub azure_store_telemetry(message_type as string, message_value as string, ts as string)
+	dim tbl_result as en_tbl_status_codes	
+	dim daycounts, mincounts as word
+	dim seconds as byte
+	
+	if ts = "" then
+		rtc.getdata(daycounts,mincounts,seconds)
+		azure_get_timestring(ts,daycounts,mincounts,seconds)		
+	end if
+	tbl_result=tbl_select("Azure","Azure")
+	tbl_result=tbl_field_sg("time",ts,EN_TBL_SET)
+	tbl_result=tbl_field_sg("type",message_type,EN_TBL_SET)
+	tbl_result=tbl_field_sg("value",message_value,EN_TBL_SET)
+	tbl_result=tbl_record_add("")
+	#if AZURE_DEBUG_PRINT
+		azure_debugprint("Telemetry stored: Type: " + message_type + "  Value: " + message_value)
+	#endif
+end sub
+
+public sub azure_on_telemetry_sent()
+
+	if sock.num<>mqtt_sock_num then
+		exit sub
+	end if
+	azure_send_telemetry()
+
+end sub
+
+sub azure_device_lookup()
+
+	if azure_init_flag<>AZURE_INIT_SIGNATURE then
+		#if AZURE_DEBUG_PRINT
+			azure_debugprint("ERROR: azure_start() wasn't used or failed")
+		#endif
+		exit sub
+	end if
+
+	azure_dps_authorization=azure_generate_sas_token(azure_current_scope_id+"%2Fregistrations%2F"+azure_current_device_id, azure_current_primary_key, 525600)
+	azure_current_url = "https://" + azure_current_dps_server  + "/" + azure_current_scope_id + "/registrations/"+azure_current_device_id+AZURE_API_VERSION
+	azure_http_reset()
+	http_request(HTTP_POST, azure_current_url, azure_interface,"{registrationId: \x22"+azure_current_device_id+"\x22}")
+	azure_state=EN_AZURE_DEVICE_LOOKUP	
+
+end sub
+
+sub azure_dps_device_provisioning()
+ 
+	if azure_state<>EN_AZURE_PROVISIONING then
+		azure_state=EN_AZURE_PROVISIONING
+		azure_current_url = "https://" + azure_current_dps_server + "/" + azure_current_scope_id +"/registrations/"+azure_current_device_id+"/register"+AZURE_API_VERSION
+		azure_http_reset()
+		http_request(HTTP_PUT, azure_current_url, azure_interface,"{registrationId: \x22"+azure_current_device_id+"\x22}")	
+	end if
+	
+end sub
+
+sub iot_send_headers()
+
+  if http_request_item.url = azure_current_url then
+        http_send_headers("Content-Type","application/json")
+		http_send_headers("Authorization", "SharedAccessSignature sr="+azure_current_scope_id+"%2Fregistrations%2F"+azure_current_device_id+"&sig="+azure_dps_authorization)
+    end if
+	
+end sub
+
+
+sub azure_mqtt_start()
+	
+	azure_state=EN_AZURE_CONNECTED
+	dim user_name as string=azure_assigned_hub+"/"+azure_current_device_id+"/"+AZURE_MQTT_API_VERSION	
+	dim resourceUri as string= azure_assigned_hub+"%2Fdevices%2F"+azure_current_device_id
+	azure_sas_token="SharedAccessSignature sr="+azure_assigned_hub+"%2Fdevices%2F"+azure_current_device_id+"&sig="+azure_generate_sas_token(resourceUri, azure_current_primary_key, 525600)
+	mqtt_stop()
+	mqtt_start(azure_interface,azure_assigned_hub,8883,user_name,azure_sas_token,azure_current_device_id,true)
+
+end sub
+
+sub azure_json_callback(byref key as string, byref value as string)
+	select case azure_state
+	case EN_AZURE_DEVICE_LOOKUP:
+		if key = "assignedHub" then
+			azure_assigned_hub=value
+			callback_azure_device_assigned(value)
+		end if
+		if key = "status" and value = "assigned" then
+			azure_assigned_status=true
+		end if
+		if key = "errorCode" and value  = "trackingId" then
+			azure_assigned_status=false
+		end if
+	case EN_AZURE_PROVISIONING:
+		if key = "status" and value = "assigned" then
+			azure_assigned_status=true
+		end if
+	end select
+end sub
+
+function azure_parse_http(data as string) as string
+	azure_parse_http = ""
+	dim start_pos as byte = 0
+	dim end_pos as byte = 0
+	dim parsing as boolean = true
+	dim segment_length as byte
+
+	
+	while parsing = true
+		segment_length = 255 - len(azure_http_buf)
+		if segment_length > len(data) then
+			segment_length = len(data)
+		end if
+		azure_http_buf = azure_http_buf + mid(data,1,segment_length)
+		data = right(data,len(data) - segment_length)
+		start_pos = instr(1,azure_http_buf,"\x22",1)
+		end_pos = instr(1,azure_http_buf,"\x22",2)
+		
+		if end_pos <> 0 then
+			dim item as string = mid(azure_http_buf,start_pos + 1,end_pos - start_pos - 1)
+			if azure_current_json_key = "" then
+				azure_current_json_key = item
+			else if azure_current_json_value = "" then
+				azure_current_json_value = item
+				azure_json_callback(azure_current_json_key, azure_current_json_value)
+				azure_current_json_key = ""
+				azure_current_json_value = ""
+			end if
+		end if
+		if end_pos <> 0 then
+			azure_http_buf = right(azure_http_buf,len(azure_http_buf) - end_pos)
+		else
+			parsing = false
+		end if
+		
+	wend
+	
+end function
+
+sub iot_header_arrival(header_type as string, header_value as string)
+
+	if header_type = "Date" then
+		azure_set_datetime(header_value)
+	end if
+	
+end sub
+
+sub azure_http_request_complete()
+	
+	if http_request_item.url = azure_current_url then
+		select case azure_state		
+		case EN_AZURE_DEVICE_LOOKUP:
+			if azure_assigned_status=false then
+				azure_state=EN_AZURE_NOT_PROVISIONED
+			end if
+			if azure_assigned_hub<>"" and azure_assigned_status<>false then
+				azure_mqtt_start()
+			end if	
+		case EN_AZURE_PROVISIONING:
+			azure_state=EN_AZURE_NOT_CONNECTED
+		end select
+	end if
+end sub
+
+sub azure_content_arrival(data as string)
+	
+	if http_request_item.url = azure_current_url then
+		azure_parse_http(data)
+	end if
+
+end sub
+
+sub azure_http_reset()
+	azure_http_buf = ""
+	azure_current_json_key = ""
+	azure_current_json_value = ""
+	azure_assigned_status = false
+end sub
+
+function azure_generate_sas_token(byref resourceUri as string, byref signingKey as string, expiresInMins as word) as string
+
+	dim key as string="key"
+	dim message as string
+	dim result as string=strgen(255,"A")
+	dim ch as string(1)
+	dim s as string
+	dim daycounts,mincounts as word
+	dim seconds as byte
+	dim expires as dword
+	dim i as byte
+	
+	rtc.getdata(daycounts,mincounts,seconds) 'rtc.getdata returns the elapse time since 2000, we need the elapse time since 1970
+
+	expires=daycounts*24*60+mincounts+16302369+expiresInMins
+	expires=expires*60+seconds
+	
+	message=resourceUri+"\x0A"+lstr(expires)
+	base64_decode(signingKey,key)
+	dim hash as string=""
+	hmac_sha256(key,message,hash)
+	base64_encode(hash,len(hash),result)
+	
+
+	for i=0 to len(result)/2-1
+		ch=chr(val("&h"+mid(result,i*2+1,2)))
+		s=s+ch
+	next i
+	
+	azure_generate_sas_token=""
+	for i=1 to len(result)
+		ch=mid(result,i,1)
+		if ch="/" then
+			azure_generate_sas_token=azure_generate_sas_token+"%2F"
+		else
+			if ch="=" then
+				azure_generate_sas_token=azure_generate_sas_token+"%3D"
+			else
+				if ch="+" then
+					azure_generate_sas_token=azure_generate_sas_token+"%2B"
+				else
+					azure_generate_sas_token=azure_generate_sas_token+ch
+				end if
+			end if
+		end if
+	next i
+	azure_generate_sas_token=azure_generate_sas_token+"&se="+lstr(expires)
+
+end function
+
+function right_rotate(data as dword, amount as byte) as dword
+    right_rotate = (data SHR amount) OR (data SHL (32 - amount))
+end function
+
+sub sha256_transform(byref ctx as sha256_ctx, byref data as byte(64))
+    dim a,b,c,d,e,f,g,h,i,j,t1,t2 as dword
+    dim m as dword(64)
+    j=0
+    for i=0 to 15
+		m(i)=(data(j)SHL 24) OR (data(j+1) SHL 16) OR (data(j+2) SHL 8) OR data(j+3)
+        j=j+4
+    next i
+
+    for i = 16 to 63
+		dim s0 as dword=right_rotate(m(i-15),7) XOR right_rotate(m(i-15),18) XOR (m(i-15) SHR 3)
+		dim s1 as dword=right_rotate(m(i-2),17) XOR right_rotate(m(i-2),19) XOR (m(i-2) SHR 10)
+		m(i)=m(i-16) + s0 + m(i-7) + s1
+		m(i)=s1 + m(i-7) + s0 + m(i-16)
+    next i
+
+    a = ctx.state(0)
+    b = ctx.state(1)
+    c = ctx.state(2)
+    d = ctx.state(3)
+    e = ctx.state(4)
+    f = ctx.state(5)
+    g = ctx.state(6)
+    h = ctx.state(7)
+
+    for i=0 to 63
+		dim ep0 as dword=right_rotate(a,2) XOR right_rotate(a,13) XOR right_rotate(a,22)
+		dim maj as dword=(a AND b) XOR (a AND c) XOR (b AND c)
+		dim ep1 as dword=right_rotate(e,6) XOR right_rotate(e,11) XOR right_rotate(e,25)
+		dim ch as dword=(e AND f) XOR ((NOT e) AND g)
+		
+		t1=h + ep1 + ch + sha256_k(i) + m(i)
+		t2=ep0 + maj
+		
+        h = g
+        g = f
+        f = e
+        e = d + t1
+        d = c
+        c = b
+        b = a
+        a = t1 + t2
+    next i
+
+    ctx.state(0) = ctx.state(0) + a
+    ctx.state(1) = ctx.state(1) + b
+    ctx.state(2) = ctx.state(2) + c
+    ctx.state(3) = ctx.state(3) + d
+    ctx.state(4) = ctx.state(4) + e
+    ctx.state(5) = ctx.state(5) + f
+    ctx.state(6) = ctx.state(6) + g
+    ctx.state(7) = ctx.state(7) + h
+
+end sub
+
+sub sha256_init(byref ctx as sha256_ctx)
+    ctx.datalen = 0
+    ctx.bitlen = 0
+    ctx.state(0) = &H6A09E667
+    ctx.state(1) = &HBB67AE85
+    ctx.state(2) = &H3C6EF372
+    ctx.state(3) = &HA54FF53A
+    ctx.state(4) = &H510E527F
+    ctx.state(5) = &H9B05688C
+    ctx.state(6) = &H1F83D9AB
+    ctx.state(7) = &H5BE0CD19
+end sub
+
+sub sha256_update(byref ctx as sha256_ctx, byref data as string)
+    dim i as word
+    for i = 0 to len(data) - 1
+        ctx.data(ctx.datalen) = asc(mid(data,i+1,1))
+        ctx.datalen = ctx.datalen + 1
+        if ctx.datalen = 64 then
+            sha256_transform(ctx, ctx.data)
+            ctx.bitlen = ctx.bitlen + 512
+            ctx.datalen = 0
+        end if
+    next i
+end sub
+
+sub sha256_finalise(byref ctx as sha256_ctx, byref hash as string)
+    dim i as word=0
+    dim bytes as byte(32) = hash
+    i=ctx.datalen
+    if ctx.datalen < 56 then
+        ctx.data(i) = &H80
+        i = i + 1
+        while i < 56
+            ctx.data(i) = 0
+            i = i + 1
+        wend
+    else
+        ctx.data(i) = &H80
+        i = i + 1
+        while i < 64
+            ctx.data(i) = 0
+            i = i + 1
+        wend
+        sha256_transform(ctx, ctx.data)
+        for i = 0 to 55
+            ctx.data(i) = 0
+        next i
+    end if
+
+    ctx.bitlen = ctx.bitlen + ctx.datalen * 8
+    ctx.data(63) = ctx.bitlen
+    ctx.data(62) = ctx.bitlen SHR 8
+    ctx.data(61) = ctx.bitlen SHR 16
+    ctx.data(60) = ctx.bitlen SHR 24
+    ctx.data(59) = ctx.bitlen SHR 32
+    ctx.data(58) = ctx.bitlen SHR 40
+    ctx.data(57) = ctx.bitlen SHR 48
+    ctx.data(56) = ctx.bitlen SHR 56
+    sha256_transform(ctx, ctx.data)
+
+    for i=0 to 3
+        bytes(i) = (ctx.state(0) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 4) = (ctx.state(1) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 8) = (ctx.state(2) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 12) = (ctx.state(3) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 16) = (ctx.state(4) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 20) = (ctx.state(5) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 24) = (ctx.state(6) SHR (24 - i * 8)) AND &H000000FF
+        bytes(i + 28) = (ctx.state(7) SHR (24 - i * 8)) AND &H000000FF
+    next i
+    hash=bytes
+end sub
+
+sub hmac_h(byref s1 as string, byref s2 as string, byref out as string)
+    dim context as sha256_ctx
+    dim tmp as string=s1+s2
+    sha256_init(context)
+    sha256_update(context, tmp)
+    sha256_finalise(context, out)
+end sub
+
+sub hmac_sha256(byref key as string, byref data as string, byref result as string)
+    const SHA256_BLOCK_SIZE = 64
+    dim context as sha256_ctx
+    dim key_hash, data_hash as string(SHA256_BLOCK_SIZE)
+    dim ipad,opad as byte(SHA256_BLOCK_SIZE)
+    dim ipad_s,opad_s,ihash,ohash,k as string(SHA256_BLOCK_SIZE)
+
+    dim i as byte
+    
+    for i=0 to 63
+        ipad(i) = &H36
+        opad(i) = &H5C
+    next i
+    if len(key) > SHA256_BLOCK_SIZE then
+        dim context as sha256_ctx
+        dim hash as string(64)
+        sha256_init(context)
+        sha256_update(context, key)
+        sha256_finalise(context, k)
+    else
+        k=key
+    end if
+    for i=0 to len(key)-1
+        ipad(i) = ipad(i) XOR asc(mid(k,i+1,1))
+        opad(i) = opad(i) XOR asc(mid(k,i+1,1))
+    next i
+    ipad_s=ipad
+    opad_s=opad
+    hmac_h(ipad_s,data,ihash)
+    hmac_h(opad_s,ihash,ohash)
+    result=ohash
+end sub
+
+#if AZURE_DEBUG_PRINT
+	sub azure_debugprint(byref print_data as string)
+		sys.debugprint("AZURE> "+print_data+"\x0d\x0a")
+	end sub
+#endif	

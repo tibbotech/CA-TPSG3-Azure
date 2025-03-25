@@ -1,0 +1,175 @@
+include "global.tbh"
+
+
+
+sub boot()
+
+	'Setting Library Initialization	
+    '================================================================
+    dim stg_init_code as en_stg_status_codes
+    dim stg_name as string(STG_MAX_SETTING_NAME_LEN)
+	
+	stg_init_code = stg_start_no_init() 'do not init RAM settings, it will change wln.autoconnect etc..
+    if stg_init_code<>EN_STG_STATUS_OK then 
+        pat.play("R-R-~",PL_PAT_CANINT)
+        if sys.runmode = PL_SYS_MODE_DEBUG then sys.halt
+	else
+		stg_init_code=stg_check_all(stg_name)
+		select case stg_init_code
+		case EN_STG_STATUS_OK:
+		'--- all good ---
+		case EN_STG_STATUS_INVALID, EN_STG_STATUS_FAILURE:
+			if stg_restore_multiple(EN_STG_INIT_MODE_OVERRIDE)<>EN_STG_STATUS_OK then
+				pat.play("R-R-~",PL_PAT_CANINT)
+				if sys.runmode = PL_SYS_MODE_DEBUG then sys.halt
+			end if
+		case else:
+			'some other trouble
+			pat.play("R-R-~",PL_PAT_CANINT)
+			if sys.runmode = PL_SYS_MODE_DEBUG then sys.halt
+		end select	
+	end if
+
+    'Fd(flash disk) setup
+    '================================================================
+    if fd.mount<>PL_FD_STATUS_OK then
+        if fd.formatj(fd.availableflashspace/4*3,32,100)<>PL_FD_STATUS_OK OR fd.totalsize < (fd.availableflashspace/4*3) then
+            sys.debugprint("fd.formatj failed")
+            sys.halt
+        end if
+    
+        if fd.mount<>PL_FD_STATUS_OK then
+            sys.debugprint("fd.mount failed")
+            sys.halt
+        end if
+    end if
+    '-----------------------------------------------------------------
+
+    'Tables setup
+    '================================================================
+    if tbl_start()<>EN_TBL_STATUS_OK then
+        callback_system_error("TBL", "Failed to start")
+        sys.halt()
+    end if
+    '-----------------------------------------------------------------
+
+    ' Set the timezone to UTC-12:00
+    APP_TIMEZONE="0"
+    datetime_tz_offset=APP_TIMEZONE
+    APP_LATITUDE=0
+    datetime_lat=APP_LATITUDE
+    APP_LONGITUDE=0
+    datetime_lng=APP_LONGITUDE
+current_interface = PL_SOCK_INTERFACE_NULL
+    sys.onsystimerperiod=1
+    dim f as byte
+    for f=0 to MAX_NUM_INTERFACES-1
+        interface_ready(f)=NO
+    next f
+#if SIGNAL_STRENGTH_INDICATION
+    'enable the control lines (notice that the use of the RST line is not really necessary)   
+    io.num=PL_IO_NUM_46
+    io.enabled=YES
+    io.state=LOW
+    io.state=HIGH
+    io.num=PL_IO_NUM_47
+    io.enabled=YES
+    io.num=PL_IO_NUM_48
+    io.enabled=YES
+
+    
+    'make 5 clocks
+    io.num=PL_IO_NUM_47
+    for f=0 to 4
+        io.lineset(PL_IO_NUM_48,1)
+        io.state=LOW
+        io.state=HIGH
+    next f
+#endif
+    
+
+    beep.divider = 11111
+
+    'Ethernet setup
+    '================================================================
+    device_net_ip = "1.0.0.1"
+    device_net_mask = "255.255.255.0"
+    device_net_gateway = "1.0.0.1"
+    
+    dim dhcp_enabled as string(1) = 1
+
+    if dhcp_enabled = "1" then
+        net_dhcp_enabled = true
+    else
+        net_dhcp_enabled = false
+    end if
+    
+
+    if net_dhcp_enabled = false then
+        net.ip=device_net_ip
+        net.netmask=device_net_mask
+        net.gatewayip=device_net_gateway
+    else
+        'ethernet dhcp
+        dhcp_start(PL_SOCK_INTERFACE_NET,device_net_ip,"")
+    end if
+    '-----------------------------------------------------------------
+
+    'DNS setup
+    '================================================================
+    DNS_socket=sock_get("DNS")
+    dns_start(DNS_socket)
+    'Making a DNS query:
+    'dns_connect(PL_SOCK_INTERFACE_NET, "8.8.4.4",0)
+    'dns_query("google.com")
+    'get the response in callback_dns_answer_acquired
+    '-----------------------------------------------------------------
+
+    http_start()
+
+    'SNTP setup
+    '================================================================
+    SNTP_socket=sock_get("NTP")
+    sntp_init()
+    SNTP_SERVER="216.239.35.0"
+    '-----------------------------------------------------------------
+
+
+	TIOS_VERSION=mid(sys.version, 2,len(sys.version) - 2)
+
+
+    pat.play("B-B-B-",PL_PAT_CANINT)
+
+	if net.linkstate<>PL_NET_LINKSTAT_NOLINK AND net_dhcp_enabled = false then
+		interface_set(PL_SOCK_INTERFACE_NET,YES)
+	end if
+
+
+	dim r as ok_ng
+
+	beep.play("B-B",PL_BEEP_CANINT)
+	r=sys.configaccel
+	read_debugprint_Onboard_Sensors()
+
+	'set up HTTP sockets (we setup 4 of them)
+	for f = 0 to 3
+		sock.num = sock_get("HTTP")
+		
+		'for HTTP to work, we need to request memory for RX, TX, and VAR buffers
+		sock.rxbuffrq(1)
+		sock.txbuffrq(1)
+		sock.varbuffrq(1)
+		
+		'setup the socket itself
+		sock.protocol=PL_SOCK_PROTOCOL_TCP
+		sock.inconmode=PL_SOCK_INCONMODE_ANY_IP_ANY_PORT
+		sock.httpportlist="80"
+	next f
+	
+	'actual buffer memory allocation
+	sys.buffalloc
+	
+	AZURE_DEVICE_ID = stg_get("DVID",0)
+	AZURE_SCOPE_ID = stg_get("SCID",0)
+	AZURE_PRIMARY_KEY = stg_get("PKEY",0)
+end sub
