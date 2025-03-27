@@ -6,11 +6,11 @@ property sys.boardtemp
 '<b>R/O PROPERTY. </b><br><br>
 'Returns the floating point value expressing the board temperature in deg. C.
 'In case of hardware failure this syscall will return 255 to signal the failure.
-    get = syscall(916) as real
+    get = syscall(918) as real
 end property
 
 
-syscall(917) sys.configaccel() as ok_ng
+syscall(919) sys.configaccel() as ok_ng
 '<b>METHOD.</b><br><br>
 '<br><br>
 'configure accelerometer sensor .
@@ -19,7 +19,7 @@ syscall(917) sys.configaccel() as ok_ng
 '<br><br>
 'This method will fail (return 1- NG) if hardware is malfunctioned.
 
-syscall(921) sys.captureaccel()
+syscall(923) sys.captureaccel()
 '<b>METHOD. </b><br><br>
 'measure the acceleration along the three axes (X, Y, Z) of the accelerometer.
 '<br><br>
@@ -29,17 +29,17 @@ syscall(921) sys.captureaccel()
 property sys.readaccelx
 '<b>R/O PROPERTY. </b><br><br>
 'Returns the signed short integer value of x-axis in mg.
-    get = syscall(918) as short
+    get = syscall(920) as short
 end property
 
 property sys.readaccely
 '<b>R/O PROPERTY. </b><br><br>
 'Returns the signed short integer value of y-axis in mg.
-    get = syscall(919) as short
+    get = syscall(921) as short
 end property
 
 property sys.readaccelz
 '<b>R/O PROPERTY. </b><br><br>
 'Returns the signed short integer value of z-axis in mg.
-    get = syscall(920) as short
+    get = syscall(922) as short
 end property

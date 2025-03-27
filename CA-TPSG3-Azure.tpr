@@ -10,7 +10,7 @@ transport=udp_winpcap
 [address1]
 platform=TPP2W(G3)
 transport=udp_winpcap
-address=0.1.2.3.4.200
+address=0.36.119.85.110.122
 [address2]
 platform=TPP2W(G3)
 transport=udp_broadcast
