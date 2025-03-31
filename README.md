@@ -27,9 +27,9 @@ If you do not have an account, you can follow documentation that was previously 
 1. Build and load the application to the TPP2(G3) board.
 2. Find out the IP of the device; note that this application runs DHCP and will get an IP from your router's DHCP server.
 3. Open a browser tab, type the IP address, and open the page.
-4. Go to your Microsoft IoT Central Application, create a device instance, and attach a template to it. You can download our template [here](/Resources/TPS_G3_V0.json), and import it to your Azure IoT Central Application.
-5. Press connect, and you will see the credentials of the cloud instance. Copy these credentials to your clipboard.
-6. Back on the TPP2(G3)'s application webpage, paste the device credentials you copies from IoT Central in the corresponding fields and press the save button.
+4. Go to your Microsoft IoT Central Application, create a device instance, and attach a template to it. You can download our template [here](/Resources/TPS_G3_V0.json), and import it to your Azure IoT Central Application. You may also refer to this [tutorial](https://docs.tibbo.com/oss_visualizing_data); however, it is important to note that although the general steps are the same, those instructions were not built for this device, and are instead for OSS.
+5. Press connect, and you will see the credentials of the cloud instance. Copy these credentials to your clipboard by pressing the blue copy button to the right of each field.
+6. Back on the TPP2(G3)'s application webpage, paste the device credentials you copied from IoT Central in the corresponding fields and press the save button.
 7. Go to your IoT Central Device instance and check for telemetries in the "Raw data" pane. You should be able to see telemetries (json format) that include your sensor values. If you like to visualize your data, you can refer to this [tutorial](https://docs.tibbo.com/oss_visualizing_data); however, it is important to note that although the general steps are the same, those instructions were not built for this device, and are instead for OSS.
 
 Feel free to contact _support@tibbo.com_ in case you have questions.
