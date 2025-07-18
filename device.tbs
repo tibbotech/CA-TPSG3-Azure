@@ -531,13 +531,13 @@ public sub proc_httprqstring()
 	dim device_id as string
 	dim primary_key as string
 	
-	http_req_string = sock.gethttprqstring(100)+" "		'we add the empty space after the http_req_string so that our parsing function will work correctly under POST.
+	http_req_string = sock.gethttprqstring(254)+" "		'we add the empty space after the http_req_string so that our parsing function will work correctly under POST.
 	
 	if instr(1,http_req_string,"id_scope=",1) > 0 and instr(1,http_req_string,"device_id=",1) > 0 and instr(1,http_req_string,"primary_key=",1) > 0 then
 	
 		id_scope = get_http_argument(http_req_string, "id_scope=")
 		device_id = get_http_argument(http_req_string, "device_id=")
-		primary_key = get_http_argument(http_req_string, "primary_key=")+"="
+		primary_key = get_http_argument(http_req_string, "primary_key=")
 		
 		stg_set("SCID", 0, id_scope)
 		stg_set("DVID", 0, device_id)
