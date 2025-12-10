@@ -185,7 +185,7 @@ sub mqtt_connect_socket()
 				romfile.open(MQTT_CER_FILE)
 				dim res as pl_tls_result=sock.tlsinit(romfile.offset)  'check return state
 				if res <>PL_TLS_SUCCESS then
-					sys.debugprint("fucked")
+					sys.debugprint("MQTT TLS init error")
 				end if
 '				sock.tlsinit(0)
 			#else
